@@ -6,6 +6,7 @@ import {
 import { UserDetails } from 'types';
 import { Subscription } from 'types';
 import { SupabaseClient } from '@supabase/supabase-auth-helpers/nextjs';
+import { RealtimeSubscription } from '@supabase/realtime-js';
 
 type UserContextType = {
   accessToken: string | null;
@@ -29,37 +30,41 @@ export const MyUserContextProvider = (props: Props) => {
   const { user, accessToken, isLoading: isLoadingUser } = useSupaUser();
   const [isLoadingData, setIsloadingData] = useState(false);
   const [userDetails, setUserDetails] = useState<UserDetails | null>(null);
-  const [subscription, setSubscription] = useState<Subscription | null>(null);
 
   const getUserDetails = () =>
     supabase.from<UserDetails>('users').select('*').single();
-  const getSubscription = () =>
-    supabase
-      .from<Subscription>('subscriptions')
-      .select('*, prices(*, products(*))')
-      .in('status', ['trialing', 'active'])
-      .single();
+
 
   useEffect(() => {
-    if (user && !isLoadingData && !userDetails && !subscription) {
+    let sub: RealtimeSubscription
+    if (user && !isLoadingData) {
+       sub = supabase
+        .from('users')
+        .on('*', async (payload) => {
+          setUserDetails(payload.new)
+        })
+        .subscribe();
+    }
+    return () => {
+      if (sub) sub.unsubscribe()
+    }
+  }, [])
+
+  useEffect(() => {
+    if (user && !isLoadingData && !userDetails) {
       setIsloadingData(true);
-      Promise.allSettled([getUserDetails(), getSubscription()]).then(
+      Promise.allSettled([getUserDetails()]).then(
         (results) => {
           const userDetailsPromise = results[0];
-          const subscriptionPromise = results[1];
 
           if (userDetailsPromise.status === 'fulfilled')
             setUserDetails(userDetailsPromise.value.data);
-
-          if (subscriptionPromise.status === 'fulfilled')
-            setSubscription(subscriptionPromise.value.data);
 
           setIsloadingData(false);
         }
       );
     } else if (!user && !isLoadingUser && !isLoadingData) {
       setUserDetails(null);
-      setSubscription(null);
     }
   }, [user, isLoadingUser]);
 
@@ -68,7 +73,7 @@ export const MyUserContextProvider = (props: Props) => {
     user,
     userDetails,
     isLoading: isLoadingUser || isLoadingData,
-    subscription
+    subscription: null
   };
 
   return <UserContext.Provider value={value} {...props} />;

@@ -35,3 +35,7 @@ yarn-error.log*
 
 # editors
 .vscode
+
+# Supabase
+**/supabase/.branches
+**/supabase/.temp
